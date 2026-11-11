@@ -1,0 +1,675 @@
+<!DOCTYPE html>
+<html lang="th">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>ระบบวิเคราะห์และตรวจสอบการใช้ไฟฟ้าในห้องเรียน (Classroom Energy Audit Dashboard)</title>
+  <!-- Google Fonts: Prompt / Inter -->
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Prompt:ital,wght@0,300;0,400;0,500;0,600;0,700;1,400&family=JetBrains+Mono:wght@400;600&display=swap" rel="stylesheet">
+  <!-- Chart.js via CDN with local fallback -->
+  <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.1/dist/chart.umd.min.js"></script>
+  <!-- Lucide Icons via CDN -->
+  <script src="https://unpkg.com/lucide@latest"></script>
+  <link rel="stylesheet" href="style.css">
+</head>
+<body>
+  <div class="app-layout">
+    <!-- LEFT SIDEBAR -->
+    <aside class="sidebar">
+      <div class="sidebar-header">
+        <div class="logo-box">
+          <i data-lucide="zap" class="logo-icon"></i>
+          <div class="logo-text">
+            <h2>EnergyAudit</h2>
+            <span>วิเคราะห์การใช้ไฟฟ้า</span>
+          </div>
+        </div>
+      </div>
+
+      <nav class="sidebar-nav">
+        <div class="nav-section-title">เมนูหลัก</div>
+        <button class="nav-item active" data-tab="tab-dashboard">
+          <i data-lucide="layout-dashboard"></i>
+          <span>แดชบอร์ดภาพรวม</span>
+        </button>
+        <button class="nav-item" data-tab="tab-table">
+          <i data-lucide="table"></i>
+          <span>ตารางข้อมูลและส่งออก</span>
+        </button>
+        <button class="nav-item" data-tab="tab-errors">
+          <i data-lucide="shield-alert"></i>
+          <span>ตรวจสอบและแก้ไขข้อมูล</span>
+          <span class="badge-count" id="error-badge-count">3</span>
+        </button>
+        <button class="nav-item" data-tab="tab-summary">
+          <i data-lucide="file-text"></i>
+          <span>สรุปเนื้อหาและคำตอบโจทย์</span>
+        </button>
+      </nav>
+
+      <div class="sidebar-footer">
+        <div class="dataset-info">
+          <div class="status-indicator"></div>
+          <div>
+            <div class="data-file-name">classroom_electricity_dirty_10.csv</div>
+            <div class="data-status-text">10 แถว • 3 วันที่บันทึก</div>
+          </div>
+        </div>
+      </div>
+    </aside>
+
+    <!-- MAIN CONTENT AREA -->
+    <main class="main-content">
+      <!-- TOP HEADER -->
+      <header class="top-header">
+        <div class="page-title-area">
+          <h1 id="page-title">ระบบวิเคราะห์การใช้ไฟฟ้าในห้องเรียน</h1>
+          <p id="page-desc">ชุดข้อมูลจำลองเพื่อการศึกษา วิทยาลัยการอาชีพ • ข้อมูลบันทึก 1-3 พฤศจิกายน 2026</p>
+        </div>
+        <div class="header-actions">
+          <button class="btn btn-outline" id="btn-reset-data" title="รีเซ็ตข้อมูลสู่ต้นฉบับ">
+            <i data-lucide="rotate-ccw"></i> รีเซ็ตข้อมูลเริ่มต้น
+          </button>
+          <button class="btn btn-primary" id="btn-export-csv-top">
+            <i data-lucide="download"></i> ส่งออกผลสรุป CSV
+          </button>
+        </div>
+      </header>
+
+      <!-- GLOBAL FILTER BAR (Always available for reactive data filtering) -->
+      <section class="filter-card">
+        <div class="filter-card-header">
+          <div class="filter-title">
+            <i data-lucide="filter"></i>
+            <span>ตัวกรองข้อมูลร่วม (Data Filters)</span>
+          </div>
+          <span class="filter-status-hint" id="filter-summary-text">แสดงผล 8 จาก 8 รายการที่ใช้คำนวณ (แยกออก 2 รายการผิดเงื่อนไข)</span>
+        </div>
+        <div class="filter-controls">
+          <div class="filter-group">
+            <label for="filter-date"><i data-lucide="calendar"></i> วันที่:</label>
+            <select id="filter-date" class="form-select">
+              <option value="ALL">ทุกวันที่ (ทั้งหมด)</option>
+              <option value="11/1/2026">11/1/2026</option>
+              <option value="11/2/2026">11/2/2026</option>
+              <option value="11/3/2026">11/3/2026</option>
+            </select>
+          </div>
+
+          <div class="filter-group">
+            <label for="filter-room"><i data-lucide="door-open"></i> ห้อง:</label>
+            <select id="filter-room" class="form-select">
+              <option value="ALL">ทุกห้อง (ทั้งหมด)</option>
+              <option value="คอมพิวเตอร์ 1">คอมพิวเตอร์ 1</option>
+              <option value="คอมพิวเตอร์ 2">คอมพิวเตอร์ 2</option>
+              <option value="ทฤษฎี 1">ทฤษฎี 1</option>
+              <option value="ทฤษฎี 2">ทฤษฎี 2</option>
+            </select>
+          </div>
+
+          <div class="filter-group">
+            <label for="filter-room-type"><i data-lucide="tag"></i> ประเภทห้อง:</label>
+            <select id="filter-room-type" class="form-select">
+              <option value="ALL">ทุกประเภทห้อง (ทั้งหมด)</option>
+              <option value="ห้องปฏิบัติการ">ห้องปฏิบัติการ (Lab)</option>
+              <option value="ห้องเรียน">ห้องเรียน (Classroom)</option>
+            </select>
+          </div>
+
+          <div class="filter-actions">
+            <button class="btn btn-secondary" id="btn-clear-filters">
+              <i data-lucide="x-circle"></i> ล้างตัวกรอง
+            </button>
+          </div>
+        </div>
+      </section>
+
+      <!-- TAB 1: DASHBOARD -->
+      <div class="tab-pane active" id="tab-dashboard">
+        <!-- KPI METRICS SECTION -->
+        <div class="kpi-grid">
+          <div class="kpi-card" style="border-top-color: #3b82f6;">
+            <div class="kpi-icon-wrapper blue">
+              <i data-lucide="zap"></i>
+            </div>
+            <div class="kpi-info">
+              <div class="kpi-label">หน่วยไฟฟ้ารวม (Total Energy)</div>
+              <div class="kpi-value"><span id="kpi-total-energy">0.00</span> <span class="kpi-unit">kWh</span></div>
+              <div class="kpi-sub" id="kpi-total-energy-sub">คำนวณจาก 8 รายการที่ผ่านเงื่อนไข</div>
+            </div>
+          </div>
+
+          <div class="kpi-card" style="border-top-color: #10b981;">
+            <div class="kpi-icon-wrapper green">
+              <i data-lucide="banknote"></i>
+            </div>
+            <div class="kpi-info">
+              <div class="kpi-label">ค่าไฟฟ้ารวม (Total Cost)</div>
+              <div class="kpi-value">฿<span id="kpi-total-cost">0.00</span> <span class="kpi-unit">บาท</span></div>
+              <div class="kpi-sub" id="kpi-total-cost-sub">อัตรา 4.50 บาท/หน่วย (ไม่รวมภาษี/บริการ)</div>
+            </div>
+          </div>
+
+          <div class="kpi-card" style="border-top-color: #8b5cf6;">
+            <div class="kpi-icon-wrapper purple">
+              <i data-lucide="gauge"></i>
+            </div>
+            <div class="kpi-info">
+              <div class="kpi-label">หน่วยไฟต่อชั่วโมง (Avg Rate)</div>
+              <div class="kpi-value"><span id="kpi-rate-per-hour">0.00</span> <span class="kpi-unit">kWh/h</span></div>
+              <div class="kpi-sub" id="kpi-rate-sub">ผลรวมหน่วยไฟ ÷ ผลรวมชั่วโมง (44 ชม.)</div>
+            </div>
+          </div>
+
+          <div class="kpi-card" style="border-top-color: #ef4444;">
+            <div class="kpi-icon-wrapper red">
+              <i data-lucide="alert-triangle"></i>
+            </div>
+            <div class="kpi-info">
+              <div class="kpi-label">รายการที่มีปัญหา (Issues)</div>
+              <div class="kpi-value"><span id="kpi-issues-count">0</span> <span class="kpi-unit">รายการ</span></div>
+              <div class="kpi-sub" id="kpi-issues-sub">2 ผิดเงื่อนไข (แยกออก) | 1 ต้องตรวจสอบ</div>
+            </div>
+          </div>
+        </div>
+
+        <!-- AUDIT SUMMARY NOTIFICATION STRIP -->
+        <div class="audit-banner">
+          <div class="audit-banner-icon">
+            <i data-lucide="info"></i>
+          </div>
+          <div class="audit-banner-content">
+            <strong>นโยบายการประมวลผลข้อมูลตามข้อกำหนด:</strong>
+            รายการ <strong>E009</strong> (มิเตอร์ลดลง -16 หน่วย) และ <strong>E010</strong> (ค่าไฟต่อหน่วย -4.5 บาท) ถูกจำแนกเป็น <em>"ผิดเงื่อนไข"</em> และถูกแยกออกจากผลสรุปหลักโดยอัตโนมัติ | รายการ <strong>E006</strong> (ใช้ไฟกระโดด 200 kWh) จัดเป็น <em>"ต้องตรวจสอบ"</em> แต่ยังคงไว้ในผลคำนวณตามเกณฑ์โจทย์
+          </div>
+          <button class="btn btn-sm btn-outline-white" id="btn-jump-to-errors">ดูรายละเอียดปัญหา &rarr;</button>
+        </div>
+
+        <!-- CHARTS SECTION -->
+        <div class="charts-grid">
+          <!-- CHART 1: BAR CHART ROOM TOTAL -->
+          <div class="chart-card">
+            <div class="chart-card-header">
+              <div>
+                <h3 class="chart-title"><i data-lucide="bar-chart-2"></i> กราฟแท่ง: หน่วยไฟรวมรายห้อง</h3>
+                <p class="chart-subtitle">เปรียบเทียบปริมาณการใช้ไฟฟ้ารวม (kWh) แยกตามห้องเรียน</p>
+              </div>
+              <span class="chart-tag">หน่วย: kWh</span>
+            </div>
+            <div class="chart-container">
+              <canvas id="chartRoomTotal"></canvas>
+            </div>
+            <div class="chart-footer-note" id="chart-room-total-note">
+              * ข้อมูลอิงตามตัวกรองปัจจุบัน (รายการผิดเงื่อนไขถูกแยกออก)
+            </div>
+          </div>
+
+          <!-- CHART 2: BAR CHART HOURLY CONSUMPTION -->
+          <div class="chart-card">
+            <div class="chart-card-header">
+              <div>
+                <h3 class="chart-title"><i data-lucide="bar-chart"></i> กราฟแท่ง: หน่วยไฟต่อชั่วโมงรายห้อง</h3>
+                <p class="chart-subtitle">เปรียบเทียบอัตราการกินไฟเฉลี่ยต่อชั่วโมงใช้งาน (ผลรวมหน่วยไฟ ÷ ผลรวมชั่วโมง)</p>
+              </div>
+              <span class="chart-tag">หน่วย: kWh/ชม.</span>
+            </div>
+            <div class="chart-container">
+              <canvas id="chartHourlyRate"></canvas>
+            </div>
+            <div class="chart-footer-note" id="chart-hourly-note">
+              * ห้องคอมพิวเตอร์มีอัตราการกินไฟต่อชั่วโมงสูงกว่าห้องทฤษฎีอย่างชัดเจน
+            </div>
+          </div>
+
+          <!-- CHART 3: SEMI-DOUGHNUT CHART (ตามคำขอโจทย์และผู้ใช้: กราฟครึ่งวงกลม) -->
+          <div class="chart-card">
+            <div class="chart-card-header">
+              <div>
+                <h3 class="chart-title"><i data-lucide="pie-chart"></i> กราฟครึ่งวงกลม: สัดส่วนการใช้ไฟตามห้อง</h3>
+                <p class="chart-subtitle">สัดส่วนร้อยละ (%) ของพลังงานไฟฟ้ารวมจำแนกตามห้อง</p>
+              </div>
+              <span class="chart-tag">สัดส่วน %</span>
+            </div>
+            <div class="chart-container semi-gauge-container">
+              <canvas id="chartSemiDoughnut"></canvas>
+            </div>
+            <div class="chart-footer-note" id="chart-semi-note">
+              * กราฟครึ่งวงกลมแสดงสัดส่วนการใช้พลังงานไฟฟ้าของแต่ละห้องเทียบกับยอดรวม
+            </div>
+          </div>
+
+          <!-- CHART 4: DAILY TREND LINE/BAR -->
+          <div class="chart-card">
+            <div class="chart-card-header">
+              <div>
+                <h3 class="chart-title"><i data-lucide="trending-up"></i> กราฟแนวโน้มหน่วยไฟรายวัน</h3>
+                <p class="chart-subtitle">แนวโน้มการใช้ไฟฟ้ารวมแต่ละวัน พร้อมจำนวนรายการที่ใช้คำนวณ</p>
+              </div>
+              <span class="chart-tag">รายวัน</span>
+            </div>
+            <div class="chart-container">
+              <canvas id="chartDailyTrend"></canvas>
+            </div>
+            <div class="chart-footer-note" id="chart-daily-note">
+              * วันที่ 11/3/2026 ข้อมูลทั้ง 2 รายการผิดเงื่อนไข จึงมี 0 รายการที่นำมาคำนวณ
+            </div>
+          </div>
+        </div>
+      </div>
+
+      <!-- TAB 2: DATA TABLE -->
+      <div class="tab-pane" id="tab-table">
+        <div class="table-card">
+          <div class="table-card-header">
+            <div class="table-title-area">
+              <h3><i data-lucide="table"></i> รายการข้อมูลการใช้ไฟฟ้าและผลการคำนวณ</h3>
+              <p>แสดงข้อมูลจากไฟล์ต้นฉบับ classroom_electricity_dirty_10.csv พร้อมผลคำนวณและสถานะการตรวจสอบ</p>
+            </div>
+            <div class="table-actions">
+              <div class="table-toggle-wrapper">
+                <label class="checkbox-container">
+                  <input type="checkbox" id="chk-show-invalid" checked>
+                  <span class="checkmark"></span>
+                  แสดงรายการผิดเงื่อนไขในตาราง
+                </label>
+              </div>
+              <button class="btn btn-success" id="btn-export-csv-table">
+                <i data-lucide="file-spreadsheet"></i> ส่งออกตารางเป็น CSV
+              </button>
+            </div>
+          </div>
+
+          <!-- TABLE WRAPPER -->
+          <div class="table-responsive">
+            <table class="data-table" id="main-data-table">
+              <thead>
+                <tr>
+                  <th>รหัส</th>
+                  <th>วันที่</th>
+                  <th>ห้อง</th>
+                  <th>ประเภท</th>
+                  <th>ผู้ใช้ (คน)</th>
+                  <th>ชม.ใช้งาน</th>
+                  <th>มิเตอร์ก่อน</th>
+                  <th>มิเตอร์หลัง</th>
+                  <th>หน่วยไฟ (kWh)</th>
+                  <th>ค่าไฟ/หน่วย</th>
+                  <th>ค่าไฟรวม (บาท)</th>
+                  <th>kWh/ชม.</th>
+                  <th>สถานะข้อมูล</th>
+                  <th>การแจ้งเตือน / เหตุผล</th>
+                </tr>
+              </thead>
+              <tbody id="table-body">
+                <!-- Injected via JavaScript -->
+              </tbody>
+            </table>
+          </div>
+
+          <!-- EMPTY STATE MESSAGE -->
+          <div class="empty-state hidden" id="table-empty-state">
+            <i data-lucide="search-x" class="empty-icon"></i>
+            <h4>ไม่พบข้อมูลตามเงื่อนไขตัวกรอง</h4>
+            <p>กรุณาปรับเปลี่ยนหรือล้างตัวกรองเพื่อแสดงข้อมูล</p>
+            <button class="btn btn-secondary btn-sm" id="btn-empty-clear">ล้างตัวกรองทั้งหมด</button>
+          </div>
+
+          <!-- TABLE FOOTER SUMMARY -->
+          <div class="table-card-footer">
+            <div class="table-stats-summary" id="table-footer-summary">
+              กำลังแสดงข้อมูล...
+            </div>
+          </div>
+        </div>
+      </div>
+
+      <!-- TAB 3: ERROR INSPECTION & CORRECTION -->
+      <div class="tab-pane" id="tab-errors">
+        <!-- AUDIT SUMMARY HEADER -->
+        <div class="section-intro-card">
+          <div class="intro-icon alert-bg">
+            <i data-lucide="shield-alert"></i>
+          </div>
+          <div class="intro-text">
+            <h3>การตรวจสอบคุณภาพข้อมูลและระบบจัดการข้อผิดพลาด (Data Quality & Audit)</h3>
+            <p>
+              ตามเงื่อนไขของโจทย์: <strong>"ห้ามเดาค่าใหม่เพื่อแทนค่าที่ผิด และห้ามลบข้อมูลต้นฉบับ"</strong> 
+              ระบบจึงได้จัดกลุ่มข้อมูลออกเป็น 3 สถานะ ได้แก่ <span class="badge badge-success">ใช้งานได้</span>, 
+              <span class="badge badge-warning">ต้องตรวจสอบ</span> และ <span class="badge badge-danger">ผิดเงื่อนไข</span> 
+              โดยรายการที่ผิดเงื่อนไขจะถูกแยกออกจากผลสรุปหลักโดยอัตโนมัติ เพื่อไม่ให้ค่าไฟบิดเบือน
+            </p>
+          </div>
+        </div>
+
+        <!-- ERROR TABLE (AUDIT QUALITY TABLE) -->
+        <div class="table-card mb-4">
+          <div class="table-card-header">
+            <div class="table-title-area">
+              <h3><i data-lucide="clipboard-x"></i> ตารางคุณภาพข้อมูล: รายการที่มีข้อผิดพลาดและข้อสงสัย</h3>
+              <p>แสดงรหัสรายการ ค่าที่สงสัย เหตุผล และแนวทางตรวจสอบตามเกณฑ์การประเมิน</p>
+            </div>
+          </div>
+          <div class="table-responsive">
+            <table class="data-table">
+              <thead>
+                <tr>
+                  <th>รหัส</th>
+                  <th>วันที่/ห้อง</th>
+                  <th>ค่าที่สงสัย</th>
+                  <th>สถานะ</th>
+                  <th>เหตุผลที่ตรวจพบ</th>
+                  <th>ผลกระทบต่อการสรุปค่าไฟ</th>
+                  <th>แนวทางตรวจสอบและแก้ไข</th>
+                  <th>สถานะในผลสรุปหลัก</th>
+                </tr>
+              </thead>
+              <tbody id="error-table-body">
+                <!-- Injected via JavaScript -->
+              </tbody>
+            </table>
+          </div>
+        </div>
+
+        <!-- INTERACTIVE CORRECTION & WHAT-IF SIMULATION -->
+        <div class="simulation-card">
+          <div class="simulation-header">
+            <div>
+              <h3 class="simulation-title">
+                <i data-lucide="sliders"></i> เครื่องมือจำลองการแก้ไขข้อมูล (What-If Correction Sandbox)
+              </h3>
+              <p class="simulation-desc">
+                ทดลองปรับแก้ค่าที่บันทึกผิดพลาด เพื่อศึกษาผลกระทบต่อหน่วยไฟฟ้ารวมและค่าไฟฟ้ารวม โดยไม่เปลี่ยนแปลงข้อมูลต้นฉบับ
+              </p>
+            </div>
+            <div class="simulation-tag">ระบบจำลองเชิงวิเคราะห์</div>
+          </div>
+
+          <div class="alert-box-warning">
+            <i data-lucide="alert-circle"></i>
+            <div>
+              <strong>ข้อควรระวังตามกติกา:</strong> การจำลองนี้มีไว้เพื่อศึกษาผลกระทบ (Impact Analysis) และนำเสนอแนวทางแก้ไขในรายงานเท่านั้น ชุดข้อมูลหลักในการคำนวณและส่งออกจะยังคงยึดตามกฎตัดรายการผิดเงื่อนไข
+            </div>
+          </div>
+
+          <div class="simulation-grid">
+            <!-- SIMULATION FORM -->
+            <div class="sim-panel">
+              <h4><i data-lucide="edit-3"></i> กำหนดค่าสมมุติสำหรับการแก้ไข</h4>
+              
+              <!-- ITEM E009 -->
+              <div class="sim-item-box">
+                <div class="sim-item-header">
+                  <span class="sim-code">E009</span>
+                  <span class="sim-name">คอมพิวเตอร์ 1 (11/3/2026)</span>
+                  <span class="badge badge-danger">ผิดเงื่อนไข</span>
+                </div>
+                <div class="sim-note">
+                  มิเตอร์ก่อน 1296, มิเตอร์หลังเดิม <strong>1280</strong> (ติดลบ -16 kWh)
+                </div>
+                <div class="form-row">
+                  <label for="sim-e009-after">ค่ามิเตอร์หลังที่ถูกต้อง (สมมุติฐาน):</label>
+                  <input type="number" id="sim-e009-after" class="form-input" value="1344" step="1">
+                </div>
+                <div class="sim-explanation">
+                  * สมมุติฐาน: ผู้จดอาจอ่านหลักสิบผิด หรือสลับตัวเลข หากใช้งาน 48 kWh เท่ากับ 2 วันแรก มิเตอร์ควรเป็น 1296 + 48 = 1344 หน่วย
+                </div>
+              </div>
+
+              <!-- ITEM E010 -->
+              <div class="sim-item-box">
+                <div class="sim-item-header">
+                  <span class="sim-code">E010</span>
+                  <span class="sim-name">ทฤษฎี 1 (11/3/2026)</span>
+                  <span class="badge badge-danger">ผิดเงื่อนไข</span>
+                </div>
+                <div class="sim-note">
+                  ใช้ไฟ 20 kWh, อัตราเดิม <strong>-4.5</strong> บาท/หน่วย
+                </div>
+                <div class="form-row">
+                  <label for="sim-e010-rate">ค่าไฟต่อหน่วยที่ถูกต้อง (สมมุติฐาน):</label>
+                  <input type="number" id="sim-e010-rate" class="form-input" value="4.5" step="0.1">
+                </div>
+                <div class="sim-explanation">
+                  * สมมุติฐาน: เกิดจากการพิมพ์เครื่องหมายลบเกินมา เมื่อแก้เป็น 4.5 บาท จะคิดค่าไฟได้ 20 × 4.5 = 90.00 บาท
+                </div>
+              </div>
+
+              <!-- ITEM E006 -->
+              <div class="sim-item-box">
+                <div class="sim-item-header">
+                  <span class="sim-code">E006</span>
+                  <span class="sim-name">คอมพิวเตอร์ 2 (11/2/2026)</span>
+                  <span class="badge badge-warning">ต้องตรวจสอบ</span>
+                </div>
+                <div class="sim-note">
+                  มิเตอร์ก่อน 2140, มิเตอร์หลัง 2340 (ใช้ไป <strong>200 kWh</strong> สูงผิดปกติ 5 เท่า)
+                </div>
+                <div class="form-row">
+                  <label for="sim-e006-mode">กรณีสมมุติฐานในการวิเคราะห์:</label>
+                  <select id="sim-e006-mode" class="form-select">
+                    <option value="actual">กรณีที่ 1: เป็นการใช้ไฟจริง (ลืมปิดแอร์/เครื่องคอมฯ ทั้งคืน) = 200 kWh</option>
+                    <option value="typo">กรณีที่ 2: จดมิเตอร์ผิด (อ่านเลข 1 เป็น 3 คือ 2180 kWh ใช้จริง 40 kWh)</option>
+                  </select>
+                </div>
+              </div>
+
+              <div class="sim-btn-row">
+                <button class="btn btn-primary w-100" id="btn-run-simulation">
+                  <i data-lucide="play-circle"></i> คำนวณผลกระทบการจำลอง (Run Simulation)
+                </button>
+              </div>
+            </div>
+
+            <!-- SIMULATION COMPARISON RESULTS -->
+            <div class="sim-panel">
+              <h4><i data-lucide="git-compare"></i> ผลเปรียบเทียบก่อน vs หลังการจำลอง</h4>
+              <div class="comparison-table-wrapper">
+                <table class="comparison-table">
+                  <thead>
+                    <tr>
+                      <th>ตัวชี้วัด (KPI)</th>
+                      <th>ก่อนจำลอง (ตามเกณฑ์ทางการ)</th>
+                      <th>หลังจำลองแก้ไข</th>
+                      <th>ส่วนต่าง (Delta)</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    <tr>
+                      <td><strong>จำนวนรายการที่รวม</strong></td>
+                      <td>8 รายการ</td>
+                      <td id="sim-res-count">10 รายการ</td>
+                      <td class="text-success" id="sim-diff-count">+2 รายการ</td>
+                    </tr>
+                    <tr>
+                      <td><strong>หน่วยไฟฟ้ารวม</strong></td>
+                      <td>405.00 kWh</td>
+                      <td id="sim-res-energy">473.00 kWh</td>
+                      <td id="sim-diff-energy">+68.00 kWh</td>
+                    </tr>
+                    <tr>
+                      <td><strong>ค่าไฟฟ้ารวม</strong></td>
+                      <td>฿1,822.50 บาท</td>
+                      <td id="sim-res-cost">฿2,128.50 บาท</td>
+                      <td id="sim-diff-cost">+฿306.00 บาท</td>
+                    </tr>
+                    <tr>
+                      <td><strong>หน่วยไฟเฉลี่ยต่อ ชม.</strong></td>
+                      <td>9.20 kWh/h (44 ชม.)</td>
+                      <td id="sim-res-rate">8.45 kWh/h (56 ชม.)</td>
+                      <td id="sim-diff-rate">-0.75 kWh/h</td>
+                    </tr>
+                  </tbody>
+                </table>
+              </div>
+
+              <div class="sim-analysis-box mt-3" id="sim-analysis-text">
+                <strong>บทวิเคราะห์ผลกระทบ:</strong> เมื่อแก้ไข E009 และ E010 ให้กลับมาเป็นข้อมูลที่ถูกต้อง ทำให้สามารถนำข้อมูลวันที่ 11/3/2026 กลับมาประมวลผลได้สมบูรณ์ ส่งผลให้วิทยาลัยประเมินค่าไฟรวมตามความเป็นจริงได้ถูกต้อง ไม่สูญหาย 306.00 บาท
+              </div>
+            </div>
+          </div>
+        </div>
+      </div>
+
+      <!-- TAB 4: EXECUTIVE SUMMARY & ASSIGNMENT QUESTIONS -->
+      <div class="tab-pane" id="tab-summary">
+        <!-- EXECUTIVE OVERVIEW -->
+        <div class="summary-hero-card">
+          <div class="summary-hero-badge">Executive Summary Report</div>
+          <h2>รายงานสรุปผลการวิเคราะห์การใช้ไฟฟ้าในห้องเรียน</h2>
+          <p>สรุปผลตามโจทย์การแข่งขัน Data Analysis and Website Practice ประจำวิทยาลัย</p>
+        </div>
+
+        <!-- 3 MAIN QUESTIONS ANSWERS -->
+        <div class="summary-section">
+          <div class="summary-section-header">
+            <div class="badge-number">1</div>
+            <h3>คำตอบสำหรับ 3 คำถามหลักของโจทย์</h3>
+          </div>
+
+          <div class="qa-grid">
+            <!-- Q1 -->
+            <div class="qa-card">
+              <div class="qa-header">
+                <i data-lucide="help-circle" class="qa-icon"></i>
+                <h4>คำถามที่ 1: ห้องใดใช้ไฟมาก เมื่อเทียบทั้งยอดรวมและชั่วโมงใช้งาน?</h4>
+              </div>
+              <div class="qa-body">
+                <div class="highlight-answer">
+                  <strong>คำตอบ: ห้องคอมพิวเตอร์ 2</strong> ใช้ไฟฟ้ามากที่สุด ทั้งในแง่ยอดรวมและอัตราต่อชั่วโมง
+                </div>
+                <ul class="evidence-list">
+                  <li><strong>ยอดรวมการใช้ไฟ:</strong> ห้องคอมพิวเตอร์ 2 ใช้ไปถึง <strong>240.00 kWh</strong> (คิดเป็น 59.3% ของทั้งวิทยาลัย) สูงกว่าห้องคอมพิวเตอร์ 1 (96 kWh) และสูงกว่าห้องทฤษฎี 1 (38 kWh), ห้องทฤษฎี 2 (31 kWh) อย่างมาก</li>
+                  <li><strong>อัตราต่อชั่วโมงใช้งาน:</strong> ห้องคอมพิวเตอร์ 2 มีอัตราการใช้ไฟเฉลี่ยสูงถึง <strong>24.00 kWh/ชม.</strong> (รวม 10 ชม.) ขณะที่ห้องคอมพิวเตอร์ 1 ใช้ 8.00 kWh/ชม. และห้องเรียนทฤษฎีเฉลี่ยเพียง ~3.1-3.2 kWh/ชม.</li>
+                </ul>
+              </div>
+            </div>
+
+            <!-- Q2 -->
+            <div class="qa-card">
+              <div class="qa-header">
+                <i data-lucide="help-circle" class="qa-icon"></i>
+                <h4>คำถามที่ 2: ข้อมูลใดควรตรวจสอบ และมีผลต่อการสรุปค่าไฟอย่างไร?</h4>
+              </div>
+              <div class="qa-body">
+                <div class="highlight-answer">
+                  <strong>คำตอบ: มีข้อมูลที่ต้องตรวจสอบ 3 รายการ ได้แก่ E006, E009 และ E010</strong>
+                </div>
+                <ul class="evidence-list">
+                  <li><strong>E006 (คอมพิวเตอร์ 2 วันที่ 11/2):</strong> ใช้ไฟกระโดดเป็น 200 kWh (40 kWh/ชม. เพิ่มขึ้น 5 เท่า) ส่งผลให้ค่าไฟของวันนั้นสูงถึง 900 บาท หากเกิดจากอ่านมิเตอร์ผิด ค่าไฟจริงจะถูกคิดเกินไปถึง 720 บาท</li>
+                  <li><strong>E009 (คอมพิวเตอร์ 1 วันที่ 11/3):</strong> มิเตอร์หลัง (1280) น้อยกว่ามิเตอร์ก่อน (1296) ทำให้หน่วยไฟติดลบ (-16 kWh) ส่งผลให้ค่าไฟติดลบ -72 บาท หากนำมารวมจะทำให้ยอดรวมคลาดเคลื่อน จึงต้องแยกออก</li>
+                  <li><strong>E010 (ทฤษฎี 1 วันที่ 11/3):</strong> ค่าไฟต่อหน่วยติดลบ (-4.5 บาท/หน่วย) ส่งผลให้ค่าไฟติดลบ -90 บาท ต้องแยกออกตามเกณฑ์</li>
+                  <li><strong>สรุปผลกระทบ:</strong> หากไม่คัดแยก E009 และ E010 จะทำให้หน่วยไฟรวมหายไป 16 kWh และค่าไฟรวมติดลบผิดเพี้ยนไป 162 บาท</li>
+                </ul>
+              </div>
+            </div>
+
+            <!-- Q3 -->
+            <div class="qa-card">
+              <div class="qa-header">
+                <i data-lucide="help-circle" class="qa-icon"></i>
+                <h4>คำถามที่ 3: ควรตรวจห้องใดก่อน และเสนอวิธีประหยัดไฟอย่างน้อย 2 ข้ออย่างไร?</h4>
+              </div>
+              <div class="qa-body">
+                <div class="highlight-answer">
+                  <strong>คำตอบ: ควรเข้าตรวจสอบ "ห้องคอมพิวเตอร์ 2" เป็นลำดับแรกทันที</strong>
+                </div>
+                <ul class="evidence-list">
+                  <li><strong>เหตุผลในการตรวจห้องคอมฯ 2 ก่อน:</strong> มีพฤติกรรมการใช้ไฟกระโดดผิดปกติ 5 เท่าตัวในวันที่ 11/2 (200 kWh) มีความเสี่ยงสูงที่จะเกิดการเปิดเครื่องปรับอากาศหรืออุปกรณ์ทิ้งไว้ข้ามคืน หรือมีไฟฟ้ารั่วไหลในห้อง</li>
+                  <li><strong>ข้อเสนอประหยัดไฟ ข้อที่ 1 (ระบบอัตโนมัติ):</strong> ติดตั้งระบบ Smart Timer / เบรกเกอร์ตัดไฟอัตโนมัติ สำหรับระบบปรับอากาศและปลั๊กคอมพิวเตอร์ ให้ตัดการทำงานทันทีหลังเลิกเรียน 30 นาที</li>
+                  <li><strong>ข้อเสนอประหยัดไฟ ข้อที่ 2 (มาตรการปฏิบัติการ):</strong> ปรับตั้งอุณหภูมิเครื่องปรับอากาศห้องคอมพิวเตอร์ที่ 25°C ร่วมกับพัดลมหมุนเวียนอากาศ และมอบหมายหัวหน้านักศึกษาตรวจสอบสวิตช์ไฟก่อนปิดห้องทุกครั้ง</li>
+                </ul>
+              </div>
+            </div>
+          </div>
+        </div>
+
+        <!-- 3 FINDINGS, 2 RECOMMENDATIONS, 1 LIMITATION (CRITERIA REQUIREMENT) -->
+        <div class="summary-section mt-4">
+          <div class="summary-section-header">
+            <div class="badge-number">2</div>
+            <h3>ข้อค้นพบ, ข้อเสนอแนะ และข้อจำกัดเชิงวิเคราะห์</h3>
+          </div>
+
+          <div class="insights-grid">
+            <!-- 3 KEY FINDINGS -->
+            <div class="insight-card">
+              <div class="insight-header color-blue">
+                <i data-lucide="check-circle-2"></i>
+                <h4>ข้อค้นพบหลัก 3 ข้อ (Key Findings)</h4>
+              </div>
+              <div class="insight-body">
+                <div class="insight-item">
+                  <div class="item-num">1</div>
+                  <div>
+                    <strong>ห้องปฏิบัติการคอมพิวเตอร์เป็นผู้ใช้ไฟฟ้าหลัก (83%):</strong>
+                    ห้องปฏิบัติการคอมพิวเตอร์ 1 และ 2 ใช้ไฟรวมกัน 336 kWh หรือคิดเป็น 82.96% ของการใช้ไฟฟ้ารวมทั้งวิทยาลัย ในขณะที่ห้องเรียนทฤษฎีใช้รวมกันเพียง 69 kWh (17.04%)
+                  </div>
+                </div>
+                <div class="insight-item">
+                  <div class="item-num">2</div>
+                  <div>
+                    <strong>การใช้ไฟต่อชั่วโมงของห้องปฏิบัติการสูงกว่าห้องเรียน 2.6 - 7.5 เท่า:</strong>
+                    ห้องคอมพิวเตอร์ 1 ใช้ 8.00 kWh/ชม. และห้องคอมพิวเตอร์ 2 ใช้วันปกติ 8.00 kWh/ชม. ในขณะที่ห้องทฤษฎีใช้อยู่ที่ 3.00 - 3.33 kWh/ชม. เนื่องจากการโหลดคอมพิวเตอร์กว่า 20-25 เครื่องพร้อมกัน
+                  </div>
+                </div>
+                <div class="insight-item">
+                  <div class="item-num">3</div>
+                  <div>
+                    <strong>อัตราข้อผิดพลาดของข้อมูล (Error Rate) สูงถึง 30%:</strong>
+                    จาก 10 รายการ พบข้อมูลที่มีปัญหาถึง 3 รายการ ได้แก่ มิเตอร์ติดลบ (E009), อัตราค่าไฟติดลบ (E010) และการใช้ไฟพุ่งผิดปกติ (E006) แสดงถึงการขาดระบบตรวจสอบความสมเหตุสมผล ณ จุดบันทึกข้อมูล (Validation at Entry)
+                  </div>
+                </div>
+              </div>
+            </div>
+
+            <!-- 2 RECOMMENDATIONS -->
+            <div class="insight-card">
+              <div class="insight-header color-green">
+                <i data-lucide="lightbulb"></i>
+                <h4>ข้อเสนอแนะ 2 ข้อ (Recommendations)</h4>
+              </div>
+              <div class="insight-body">
+                <div class="insight-item">
+                  <div class="item-num">1</div>
+                  <div>
+                    <strong>พัฒนาระบบบันทึกข้อมูลดิจิทัลพร้อม Data Validation Rule:</strong>
+                    ควรเปลี่ยนจากการจดบันทึกลงกระดาษเป็นการกรอกผ่านเว็บฟอร์มที่มีระบบดักจับข้อผิดพลาด เช่น ไม่อนุญาตให้กรอกมิเตอร์หลังน้อยกว่ามิเตอร์ก่อน และล็อกอัตราค่าไฟเป็นบวก เพื่อป้องกันข้อผิดพลาดตั้งแต่ต้นทาง
+                  </div>
+                </div>
+                <div class="insight-item">
+                  <div class="item-num">2</div>
+                  <div>
+                    <strong>ติดตั้งระบบ Smart Metering และเซนเซอร์ควบคุมพลังงาน:</strong>
+                    ติดตั้งมิเตอร์ดิจิทัล IoT ในห้องคอมพิวเตอร์ทั้ง 2 ห้อง เพื่อส่งแจ้งเตือนผ่าน LINE หรือ Dashboard ทันทีเมื่อมีการใช้ไฟเกินเกณฑ์ปกติ (เช่น เกิน 15 kWh/ชม.) ช่วยตรวจจับการลืมปิดแอร์หรือไฟฟ้ารั่วไหลได้แบบเรียลไทม์
+                  </div>
+                </div>
+              </div>
+            </div>
+
+            <!-- 1 LIMITATION -->
+            <div class="insight-card">
+              <div class="insight-header color-amber">
+                <i data-lucide="alert-octagon"></i>
+                <h4>ข้อจำกัดของข้อมูล 1 ข้อ (Limitations)</h4>
+              </div>
+              <div class="insight-body">
+                <div class="insight-item">
+                  <div class="item-num">1</div>
+                  <div>
+                    <strong>ช่วงระยะเวลาของข้อมูลสั้นเกินไปและไม่มีข้อมูลวันที่ 11/3 ที่สมบูรณ์:</strong>
+                    ข้อมูลมีเพียง 3 วัน (1-3 พ.ย. 2026) และในวันที่ 11/3 ทั้ง 2 รายการ (E009, E010) ล้วนมีข้อผิดพลาดทางเทคนิคจนไม่สามารถนำมาวิเคราะห์แนวโน้มได้ ทำให้ไม่สามารถวิเคราะห์แบบจำลองฤดูกาล (Seasonal Trend) หรือพฤติกรรมการใช้งานในระยะยาวได้อย่างแม่นยำเพียงพอ
+                  </div>
+                </div>
+              </div>
+            </div>
+          </div>
+        </div>
+      </div>
+    </main>
+  </div>
+
+  <script src="app.js"></script>
+</body>
+</html>
